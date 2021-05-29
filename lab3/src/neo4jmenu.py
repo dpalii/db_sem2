@@ -85,7 +85,7 @@ def main():
 
             try:
                 result = neo4j_server.get_unrelated_users_with_tagged_messages(tags)
-                print_list('Groups of unrelated users: ', result)
+                print_list('Pairs of unrelated users: ', result)
             except Exception as e:
                 show_error(e)
 

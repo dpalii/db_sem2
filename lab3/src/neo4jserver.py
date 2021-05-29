@@ -62,18 +62,22 @@ class Neo4jServer(object):
         return self.__record_to_list(self.__get_users_with_tagged_messages_from_db(tags), 'name')
 
     def get_unrelated_users_with_tagged_messages(self, tags):
-        list_of_names = self.__record_to_list(self.__get_users_with_tagged_messages_from_db(tags), 'name')
-        unrelated_users = []
-        for name1 in list_of_names:
-            group = [name1]
-            for name2 in list_of_names:
-                if name1 != name2:
-                    res = self.__check_relation_between_users(name1, name2)
-                    if not res and name1 not in group:
-                        group.append(name2)
-            unrelated_users.append(group)
+        return self.__pair_record_to_list(self.__get_unrelated_users_with_tagged_messages(tags), 'name')
 
-        return unrelated_users
+    def __get_unrelated_users_with_tagged_messages(self, tags):
+        with self.__driver.session() as session:
+            tags = tags.split(", ")
+            for tag in tags:
+                if not Tags.has_member(tag):
+                    raise ValueError(f"Tag: {tag} doesnt exist")
+
+            query = "MATCH ((u1:user)-[r1:messages]-()), ((u2:user)-[r2:messages]-()) WHERE "
+            query += " AND ".join([f" \'{tag}\' IN r1.tags" for tag in tags]) + " AND "
+            query += " AND ".join([f" \'{tag}\' IN r2.tags" for tag in tags])
+            query += " AND NOT EXISTS((u1)-[:messages]-(u2)) RETURN u1, u2"
+
+            result = session.run(query)
+            return list(result) 
 
     def __get_users_with_tagged_messages_from_db(self, tags):
         with self.__driver.session() as session:
@@ -83,19 +87,10 @@ class Neo4jServer(object):
                     raise ValueError(f"Tag: {tag} doesnt exist")
 
             query = "MATCH (u:user)-[r:messages]-() WHERE"
-            for tag in tags:
-                query += f" \'{tag}\' IN r.tags AND"
-
-            # removing last AND
-            query = query[:-3] + "RETURN u"
+            query += " AND ".join([f" \'{tag}\' IN r.tags" for tag in tags])
+            query += " RETURN u"
             result = session.run(query)
             return list(result)
-
-    def __check_relation_between_users(self, username1, username2):
-        with self.__driver.session() as session:
-            res = session.run("MATCH  (u1:user {name: $username1}), (u2:user {name: $username2}) "
-                              "RETURN EXISTS((u1)-[:messages]-(u2))", username1=username1, username2=username2)
-            return res.single()[0]
 
     def shortest_way_between_users(self, username1, username2):
         users = self.get_users()
